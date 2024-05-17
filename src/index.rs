@@ -219,7 +219,7 @@ enum HttpEvent {
   InscriptionTransferred,
 }
 
-pub fn map_index_event(event: &Event) -> HttpEvent {
+fn map_index_event(event: &Event) -> HttpEvent {
   match event {
     Event::RuneBurned {
       amount,
@@ -268,10 +268,18 @@ fn http_receiver(
 
       match event {
         HttpEvent::RuneMinted(_) | HttpEvent::RuneBurned(_) => {
-          client
+          let res = client
             .post(http_event_destination.as_str())
             .json(&event)
             .send();
+
+          if let Err(err) = res {
+            log::error!(
+              "Error while sending event to {}: {}",
+              &http_event_destination,
+              err
+            )
+          }
         }
         _ => {}
       };

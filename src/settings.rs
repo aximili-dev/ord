@@ -573,7 +573,10 @@ impl Settings {
   }
 
   pub(crate) fn http_event_destination(&self) -> Option<String> {
-    self.http_event_destination
+    self
+      .http_event_destination
+      .as_ref()
+      .map(|s| String::from(s))
   }
 }
 

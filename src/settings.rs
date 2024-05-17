@@ -1106,7 +1106,7 @@ mod tests {
           "--no-index-inscriptions",
           "--server-password=server password",
           "--server-username=server username",
-          "--http-event-destination some_url",
+          "--http-event-destination=some_url",
         ])
         .unwrap()
       ),

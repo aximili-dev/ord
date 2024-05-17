@@ -28,6 +28,7 @@ pub struct Settings {
   server_password: Option<String>,
   server_url: Option<String>,
   server_username: Option<String>,
+  http_event_destination: Option<String>,
 }
 
 impl Settings {
@@ -143,6 +144,9 @@ impl Settings {
       server_password: self.server_password.or(source.server_password),
       server_url: self.server_url.or(source.server_url),
       server_username: self.server_username.or(source.server_username),
+      http_event_destination: self
+        .http_event_destination
+        .or(source.http_event_destination),
     }
   }
 
@@ -178,6 +182,7 @@ impl Settings {
       server_password: options.server_password,
       server_url: None,
       server_username: options.server_username,
+      http_event_destination: options.http_event_destination,
     }
   }
 
@@ -257,6 +262,7 @@ impl Settings {
       server_password: get_string("SERVER_PASSWORD"),
       server_url: get_string("SERVER_URL"),
       server_username: get_string("SERVER_USERNAME"),
+      http_event_destination: get_string("HTTP_EVENT_DESTINATION"),
     })
   }
 
@@ -287,6 +293,7 @@ impl Settings {
       server_password: None,
       server_url: Some(server_url.into()),
       server_username: None,
+      http_event_destination: None,
     }
   }
 
@@ -367,6 +374,7 @@ impl Settings {
       server_password: self.server_password,
       server_url: self.server_url,
       server_username: self.server_username,
+      http_event_destination: self.http_event_destination,
     })
   }
 
@@ -562,6 +570,10 @@ impl Settings {
 
   pub(crate) fn server_url(&self) -> Option<&str> {
     self.server_url.as_deref()
+  }
+
+  pub(crate) fn http_event_destination(&self) -> Option<String> {
+    self.http_event_destination
   }
 }
 
@@ -1012,6 +1024,7 @@ mod tests {
       ("SERVER_PASSWORD", "server password"),
       ("SERVER_URL", "server url"),
       ("SERVER_USERNAME", "server username"),
+      ("HTTP_EVENT_DESTINATION", "http event destination")
     ]
     .into_iter()
     .map(|(key, value)| (key.into(), value.into()))
@@ -1056,6 +1069,7 @@ mod tests {
         server_password: Some("server password".into()),
         server_url: Some("server url".into()),
         server_username: Some("server username".into()),
+        http_event_destination: Some("http event destination".into()),
       }
     );
   }
@@ -1089,6 +1103,7 @@ mod tests {
           "--no-index-inscriptions",
           "--server-password=server password",
           "--server-username=server username",
+          "--http-event-destination some_url",
         ])
         .unwrap()
       ),
@@ -1118,6 +1133,7 @@ mod tests {
         server_password: Some("server password".into()),
         server_url: None,
         server_username: Some("server username".into()),
+        http_event_destination: Some("some_url".into())
       }
     );
   }

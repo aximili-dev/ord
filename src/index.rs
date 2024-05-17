@@ -33,6 +33,7 @@ use {
     io::{BufWriter, Write},
     sync::Once,
   },
+  tokio::sync::mpsc::{Receiver, Sender},
 };
 
 pub use self::entry::RuneEntry;
@@ -199,9 +200,104 @@ pub struct Index {
   unrecoverably_reorged: AtomicBool,
 }
 
+#[derive(Serialize, Deserialize)]
+struct RuneSupplyData {
+  pub amount: String,
+  pub block_height: u32,
+  pub txid: String,
+  pub rune_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum HttpEvent {
+  RuneBurned(RuneSupplyData),
+  RuneEtched,
+  RuneMinted(RuneSupplyData),
+  RuneTransferred,
+  InscriptionCreated,
+  InscriptionTransferred,
+}
+
+pub fn map_index_event(event: &Event) -> HttpEvent {
+  match event {
+    Event::RuneBurned {
+      amount,
+      block_height,
+      rune_id,
+      txid,
+    } => {
+      let data = RuneSupplyData {
+        amount: amount.to_string(),
+        block_height: *block_height,
+        txid: txid.to_string(),
+        rune_id: rune_id.to_string(),
+      };
+      HttpEvent::RuneBurned(data)
+    }
+    Event::RuneMinted {
+      amount,
+      block_height,
+      rune_id,
+      txid,
+    } => {
+      let data = RuneSupplyData {
+        amount: amount.to_string(),
+        block_height: *block_height,
+        txid: txid.to_string(),
+        rune_id: rune_id.to_string(),
+      };
+      HttpEvent::RuneMinted(data)
+    }
+    Event::RuneEtched { .. } => HttpEvent::RuneEtched,
+    Event::RuneTransferred { .. } => HttpEvent::RuneTransferred,
+    Event::InscriptionCreated { .. } => HttpEvent::InscriptionCreated,
+    Event::InscriptionTransferred { .. } => HttpEvent::InscriptionTransferred,
+  }
+}
+
+fn http_receiver(
+  mut receiver: Receiver<Event>,
+  http_event_destination: String,
+) -> impl FnOnce() -> () + 'static {
+  move || {
+    let client = reqwest::blocking::Client::new();
+
+    while let Some(event) = receiver.blocking_recv() {
+      let event = map_index_event(&event);
+
+      match event {
+        HttpEvent::RuneMinted(_) | HttpEvent::RuneBurned(_) => {
+          client
+            .post(http_event_destination.as_str())
+            .json(&event)
+            .send();
+        }
+        _ => {}
+      };
+    }
+  }
+}
+
 impl Index {
   pub fn open(settings: &Settings) -> Result<Self> {
-    Index::open_with_event_sender(settings, None)
+    if let Some(_) = settings.http_event_destination() {
+      Index::open_with_http_sender(settings)
+    } else {
+      Index::open_with_event_sender(settings, None)
+    }
+  }
+
+  pub fn open_with_http_sender(settings: &Settings) -> Result<Self> {
+    let channel = tokio::sync::mpsc::channel(1);
+    let sender: Sender<Event> = channel.0;
+    let receiver: Receiver<Event> = channel.1;
+
+    let http_event_destination = settings.http_event_destination().unwrap();
+
+    thread::spawn(http_receiver(receiver, http_event_destination));
+
+    Self::open_with_event_sender(settings, Some(sender))
   }
 
   pub fn open_with_event_sender(

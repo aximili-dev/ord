@@ -201,6 +201,7 @@ pub struct Index {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RuneSupplyData {
   pub amount: String,
   pub block_height: u32,
@@ -209,12 +210,30 @@ struct RuneSupplyData {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuneEtchedData {
+  block_height: u32,
+  rune_id: String,
+  txid: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuneTransferredData {
+  amount: String,
+  block_height: u32,
+  outpoint: String,
+  rune_id: String,
+  txid: String,
+}
+
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum HttpEvent {
   RuneBurned(RuneSupplyData),
-  RuneEtched,
+  RuneEtched(RuneEtchedData),
   RuneMinted(RuneSupplyData),
-  RuneTransferred,
+  RuneTransferred(RuneTransferredData),
   InscriptionCreated,
   InscriptionTransferred,
 }
@@ -249,8 +268,34 @@ fn map_index_event(event: &Event) -> HttpEvent {
       };
       HttpEvent::RuneMinted(data)
     }
-    Event::RuneEtched { .. } => HttpEvent::RuneEtched,
-    Event::RuneTransferred { .. } => HttpEvent::RuneTransferred,
+    Event::RuneEtched {
+      block_height,
+      rune_id,
+      txid,
+    } => {
+      let data = RuneEtchedData {
+        block_height: *block_height,
+        rune_id: rune_id.to_string(),
+        txid: txid.to_string(),
+      };
+      HttpEvent::RuneEtched(data)
+    }
+    Event::RuneTransferred {
+      amount,
+      block_height,
+      outpoint,
+      rune_id,
+      txid,
+    } => {
+      let data = RuneTransferredData {
+        amount: amount.to_string(),
+        block_height: *block_height,
+        outpoint: outpoint.to_string(),
+        rune_id: rune_id.to_string(),
+        txid: txid.to_string(),
+      };
+      HttpEvent::RuneTransferred(data)
+    }
     Event::InscriptionCreated { .. } => HttpEvent::InscriptionCreated,
     Event::InscriptionTransferred { .. } => HttpEvent::InscriptionTransferred,
   }
@@ -267,7 +312,10 @@ fn http_receiver(
       let event = map_index_event(&event);
 
       match event {
-        HttpEvent::RuneMinted(_) | HttpEvent::RuneBurned(_) => {
+        HttpEvent::RuneMinted(_)
+        | HttpEvent::RuneBurned(_)
+        | HttpEvent::RuneEtched(_)
+        | HttpEvent::RuneTransferred(_) => {
           let res = client
             .post(http_event_destination.as_str())
             .json(&event)

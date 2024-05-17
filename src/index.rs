@@ -230,9 +230,13 @@ struct RuneTransferredData {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum HttpEvent {
+  #[serde(rename = "burned")]
   RuneBurned(RuneSupplyData),
+  #[serde(rename = "etched")]
   RuneEtched(RuneEtchedData),
+  #[serde(rename = "minted")]
   RuneMinted(RuneSupplyData),
+  #[serde(rename = "transferred")]
   RuneTransferred(RuneTransferredData),
   InscriptionCreated,
   InscriptionTransferred,

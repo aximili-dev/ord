@@ -335,6 +335,10 @@ fn http_receiver(
         }
         _ => {}
       };
+
+      if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
+        break;
+      }
     }
   }
 }
@@ -355,7 +359,9 @@ impl Index {
 
     let http_event_destination = settings.http_event_destination().unwrap();
 
-    thread::spawn(http_receiver(receiver, http_event_destination));
+    let handle = thread::spawn(http_receiver(receiver, http_event_destination));
+
+    SENDER.lock().unwrap().replace(handle);
 
     Self::open_with_event_sender(settings, Some(sender))
   }

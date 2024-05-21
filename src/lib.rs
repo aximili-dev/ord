@@ -128,6 +128,7 @@ const TARGET_POSTAGE: Amount = Amount::from_sat(10_000);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 static LISTENERS: Mutex<Vec<axum_server::Handle>> = Mutex::new(Vec::new());
 static INDEXER: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
+static SENDER: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn fund_raw_transaction(
@@ -231,6 +232,16 @@ fn gracefully_shutdown_indexer() {
   }
 }
 
+fn gracefully_shutdown_sender() {
+  if let Some(sender) = SENDER.lock().unwrap().take() {
+    SHUTTING_DOWN.store(true, atomic::Ordering::Relaxed);
+    log::info!("Waiting for sender thread to finish...");
+    if sender.join().is_err() {
+      log::warn!("Sender thread panicked; join failed");
+    }
+  }
+}
+
 pub fn main() {
   env_logger::init();
   ctrlc::set_handler(move || {
@@ -247,6 +258,7 @@ pub fn main() {
       .for_each(|handle| handle.graceful_shutdown(Some(Duration::from_millis(100))));
 
     gracefully_shutdown_indexer();
+    gracefully_shutdown_sender();
   })
   .expect("Error setting <CTRL-C> handler");
 
@@ -269,6 +281,7 @@ pub fn main() {
       }
 
       gracefully_shutdown_indexer();
+      gracefully_shutdown_sender();
 
       process::exit(1);
     }
@@ -277,6 +290,7 @@ pub fn main() {
         output.print(format.unwrap_or_default());
       }
       gracefully_shutdown_indexer();
+      gracefully_shutdown_sender();
     }
   }
 }

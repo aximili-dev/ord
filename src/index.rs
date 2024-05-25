@@ -308,13 +308,12 @@ fn map_index_event(event: &Event) -> HttpEvent {
 
 fn send_http_events(
   client: &reqwest::blocking::Client,
-  events: &Vec<HttpEvent>,
+  rune_ids: &HashSet<RuneId>,
   http_event_destination: &String,
 ) {
-  let res = client
-    .post(http_event_destination.as_str())
-    .json(&events)
-    .send();
+  let url = format!("{}/supply-event", http_event_destination);
+  let rune_ids: Vec<String> = rune_ids.iter().map(|id| id.to_string()).collect();
+  let res = client.post(url).json(&rune_ids).send();
 
   if let Err(err) = res {
     log::error!(
@@ -330,37 +329,35 @@ fn http_receiver(
   http_event_destination: String,
 ) -> impl FnOnce() -> () + 'static {
   move || {
-    const MAX_EVENTS: usize = 500;
-    let mut events: Vec<HttpEvent> = Vec::with_capacity(500);
+    const MAX_RUNES: usize = 50;
+
+    let mut rune_ids: HashSet<RuneId> = HashSet::new();
 
     let client = reqwest::blocking::Client::new();
 
     loop {
       match receiver.try_recv() {
         Ok(event) => {
-          let event = map_index_event(&event);
-
           match event {
-            HttpEvent::RuneMinted(_)
-            | HttpEvent::RuneBurned(_)
-            | HttpEvent::RuneEtched(_)
-            | HttpEvent::RuneTransferred(_) => {
-              events.push(event);
+            Event::RuneMinted { rune_id, .. }
+            | Event::RuneBurned { rune_id, .. }
+            | Event::RuneEtched { rune_id, .. } => {
+              rune_ids.insert(rune_id);
 
-              if events.len() >= MAX_EVENTS {
-                send_http_events(&client, &events, &http_event_destination);
+              if rune_ids.len() >= MAX_RUNES {
+                send_http_events(&client, &rune_ids, &http_event_destination);
 
-                events.clear();
+                rune_ids.clear();
               }
             }
             _ => {}
           };
         }
         Err(TryRecvError::Empty) => {
-          if events.len() > 0 {
-            send_http_events(&client, &events, &http_event_destination);
+          if rune_ids.len() > 0 {
+            send_http_events(&client, &rune_ids, &http_event_destination);
 
-            events.clear();
+            rune_ids.clear();
           }
 
           sleep(Duration::from_secs(5));
@@ -371,7 +368,7 @@ fn http_receiver(
       }
 
       if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
-        send_http_events(&client, &events, &http_event_destination);
+        send_http_events(&client, &rune_ids, &http_event_destination);
 
         break;
       }

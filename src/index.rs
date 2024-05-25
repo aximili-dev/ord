@@ -353,7 +353,7 @@ impl Index {
   }
 
   pub fn open_with_http_sender(settings: &Settings) -> Result<Self> {
-    let channel = tokio::sync::mpsc::channel(1);
+    let channel = tokio::sync::mpsc::channel(100);
     let sender: Sender<Event> = channel.0;
     let receiver: Receiver<Event> = channel.1;
 

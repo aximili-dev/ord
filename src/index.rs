@@ -34,10 +34,7 @@ use {
     sync::Once,
     thread::sleep,
   },
-  tokio::{
-    sync::mpsc::{error::TryRecvError, Receiver, Sender},
-    time::sleep,
-  },
+  tokio::sync::mpsc::{error::TryRecvError, Receiver, Sender},
 };
 
 pub use self::entry::RuneEntry;

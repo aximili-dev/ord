@@ -335,6 +335,8 @@ fn http_receiver(
 
     let client = reqwest::blocking::Client::new();
 
+    let mut empty_count = 0;
+
     loop {
       match receiver.try_recv() {
         Ok(event) => {
@@ -354,13 +356,17 @@ fn http_receiver(
           };
         }
         Err(TryRecvError::Empty) => {
-          if rune_ids.len() > 0 {
+          if rune_ids.len() > 0 && empty_count >= 50 {
             send_http_events(&client, &rune_ids, &http_event_destination);
 
             rune_ids.clear();
+
+            empty_count = 0;
           }
 
-          sleep(Duration::from_secs(5));
+          empty_count += 1;
+
+          sleep(Duration::from_millis(5));
         }
         Err(TryRecvError::Disconnected) => {
           log::error!("Channel was disconnected!");

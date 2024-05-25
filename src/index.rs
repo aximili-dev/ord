@@ -32,8 +32,12 @@ use {
     collections::HashMap,
     io::{BufWriter, Write},
     sync::Once,
+    thread::sleep,
   },
-  tokio::sync::mpsc::{Receiver, Sender},
+  tokio::{
+    sync::mpsc::{error::TryRecvError, Receiver, Sender},
+    time::sleep,
+  },
 };
 
 pub use self::entry::RuneEntry;
@@ -305,38 +309,73 @@ fn map_index_event(event: &Event) -> HttpEvent {
   }
 }
 
+fn send_http_events(
+  client: &reqwest::blocking::Client,
+  events: &Vec<HttpEvent>,
+  http_event_destination: &String,
+) {
+  let res = client
+    .post(http_event_destination.as_str())
+    .json(&events)
+    .send();
+
+  if let Err(err) = res {
+    log::error!(
+      "Error while sending event to {}: {}",
+      &http_event_destination,
+      err
+    );
+  }
+}
+
 fn http_receiver(
   mut receiver: Receiver<Event>,
   http_event_destination: String,
 ) -> impl FnOnce() -> () + 'static {
   move || {
+    const MAX_EVENTS: usize = 500;
+    let mut events: Vec<HttpEvent> = Vec::with_capacity(500);
+
     let client = reqwest::blocking::Client::new();
 
-    while let Some(event) = receiver.blocking_recv() {
-      let event = map_index_event(&event);
+    loop {
+      match receiver.try_recv() {
+        Ok(event) => {
+          let event = map_index_event(&event);
 
-      match event {
-        HttpEvent::RuneMinted(_)
-        | HttpEvent::RuneBurned(_)
-        | HttpEvent::RuneEtched(_)
-        | HttpEvent::RuneTransferred(_) => {
-          let res = client
-            .post(http_event_destination.as_str())
-            .json(&event)
-            .send();
+          match event {
+            HttpEvent::RuneMinted(_)
+            | HttpEvent::RuneBurned(_)
+            | HttpEvent::RuneEtched(_)
+            | HttpEvent::RuneTransferred(_) => {
+              events.push(event);
 
-          if let Err(err) = res {
-            log::error!(
-              "Error while sending event to {}: {}",
-              &http_event_destination,
-              err
-            )
-          }
+              if events.len() >= MAX_EVENTS {
+                send_http_events(&client, &events, &http_event_destination);
+
+                events.clear();
+              }
+            }
+            _ => {}
+          };
         }
-        _ => {}
-      };
+        Err(TryRecvError::Empty) => {
+          if events.len() > 0 {
+            send_http_events(&client, &events, &http_event_destination);
+
+            events.clear();
+          }
+
+          sleep(Duration::from_secs(5));
+        }
+        Err(TryRecvError::Disconnected) => {
+          log::error!("Channel was disconnected!");
+        }
+      }
 
       if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
+        send_http_events(&client, &events, &http_event_destination);
+
         break;
       }
     }
